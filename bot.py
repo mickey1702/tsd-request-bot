@@ -9,8 +9,14 @@ from flask import Flask, request
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 
+FREE_GROUP_LINK = "https://t.me/+4ZjXcxvlqIZkNTY1"
+PAID_CONTACT = "https://t.me/TheSarcasticDoctor"
+
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 app = Flask(__name__)
+
+# active live support sessions
+active_support_users = {}
 
 # =========================
 # MAIN MENU
@@ -27,8 +33,14 @@ def main_menu():
 # =========================
 @bot.message_handler(commands=['start'])
 def start(message):
+    uid = message.chat.id
+
+    if uid in active_support_users:
+        bot.send_message(uid, "💬 Support session already active.\nContinue sending messages or type /done to close.")
+        return
+
     bot.send_message(
-        message.chat.id,
+        uid,
         "👋 Welcome to <b>THE SARCASTIC DOCTOR</b> Official Study Assistant.\n\nChoose an option below:",
         reply_markup=main_menu()
     )
@@ -37,49 +49,61 @@ def start(message):
 def free_materials(message):
     bot.send_message(
         message.chat.id,
-        "📚 <b>FREE STUDY MATERIALS</b>\n\nJoin our free resource hub here:\nhttps://t.me/+4ZjXcxvlqIZkNTY1"
+        f"📚 <b>FREE STUDY MATERIALS</b>\n\nJoin our free resource hub here:\n{FREE_GROUP_LINK}"
     )
 
 @bot.message_handler(commands=['paid_courses'])
 def paid_courses(message):
     bot.send_message(
         message.chat.id,
-        "🎓 <b>PAID LECTURE PACKAGES</b>\n\nContact admin here:\nhttps://t.me/TheSarcasticDoctor"
+        f"🎓 <b>PAID LECTURE PACKAGES</b>\n\nContact admin here:\n{PAID_CONTACT}"
     )
 
 @bot.message_handler(commands=['help'])
 def help_user(message):
     bot.send_message(
         message.chat.id,
-        "ℹ️ <b>HOW TO USE THIS BOT</b>\n\nUse menu buttons below for materials, paid packages, support and broken reports."
+        "ℹ️ <b>HOW TO USE THIS BOT</b>\n\nUse menu buttons below for study materials, paid packages, support or broken link reports."
     )
 
 # =========================
-# CONTACT ADMIN
+# LIVE CONTACT ADMIN SUPPORT
 # =========================
 @bot.message_handler(commands=['contact_admin'])
 def contact_admin(message):
-    msg = bot.send_message(message.chat.id, "✉️ Send your message for admin:")
-    bot.register_next_step_handler(msg, forward_admin_message)
+    uid = message.chat.id
+    active_support_users[uid] = True
 
-def forward_admin_message(message):
+    bot.send_message(
+        uid,
+        "💬 <b>Support session started.</b>\nNow send your messages continuously here.\nType /done whenever finished."
+    )
+
+@bot.message_handler(commands=['done'])
+def done_chat(message):
+    uid = message.chat.id
+
+    if uid in active_support_users:
+        del active_support_users[uid]
+        bot.send_message(uid, "🔒 Support session closed.\nPress ✉️ Contact Admin anytime to reopen.")
+
+@bot.message_handler(func=lambda m: m.chat.id in active_support_users and m.text not in ["/start", "/done"])
+def forward_live_support(message):
     username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
 
     admin_text = f"""
-✉️ <b>NEW ADMIN MESSAGE</b>
+📩 <b>LIVE SUPPORT MESSAGE</b>
 
 👤 User: {username}
 🆔 USERID:{message.chat.id}
 
-💬 Message:
-{message.text}
+💬 {message.text}
 """
 
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Done / User Notified", callback_data=f"done_{message.chat.id}"))
+    markup.add(types.InlineKeyboardButton("✅ Done / Close Chat", callback_data=f"done_{message.chat.id}"))
 
     bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
-    bot.send_message(message.chat.id, "✅ Your message has been sent to admin.")
 
 # =========================
 # BROKEN LINK REPORT
@@ -98,14 +122,10 @@ def save_broken_report(message):
 👤 User: {username}
 🆔 USERID:{message.chat.id}
 
-🔗 Report:
-{message.text}
+🔗 {message.text}
 """
 
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Done / User Notified", callback_data=f"done_{message.chat.id}"))
-
-    bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
+    bot.send_message(ADMIN_GROUP_ID, admin_text)
     bot.send_message(message.chat.id, "✅ Broken link report sent. Thank you.")
 
 # =========================
@@ -138,12 +158,16 @@ def btn5(message):
 def fulfilled(call):
     uid = int(call.data.split("_")[1])
 
+    if uid in active_support_users:
+        del active_support_users[uid]
+
     try:
-        bot.send_message(uid, "🎉 Your requested lecture / issue has been handled by admin. Please check.")
-        bot.answer_callback_query(call.id, "Student notified.")
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        bot.send_message(uid, "🔒 Admin closed this support session.\nPress ✉️ Contact Admin to start again.")
     except:
-        bot.answer_callback_query(call.id, "Could not notify user.")
+        pass
+
+    bot.answer_callback_query(call.id, "Support chat closed.")
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
 # =========================
 # ADMIN REPLY RELAY SYSTEM
@@ -155,11 +179,10 @@ def admin_reply_relay(message):
 
         if "USERID:" in replied_text:
             uid = int(replied_text.split("USERID:")[1].split("\n")[0].strip())
-
             sender = message.from_user.first_name
 
-            bot.send_message(uid, f"📩 <b>ADMIN REPLY</b> ({sender}):\n\n{message.text}")
-            bot.reply_to(message, "✅ Reply sent to user.")
+            bot.send_message(uid, f"💬 <b>{sender}:</b>\n{message.text}")
+            bot.reply_to(message, "✅ Reply delivered.")
     except:
         pass
 
