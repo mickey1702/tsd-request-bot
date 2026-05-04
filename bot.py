@@ -1,83 +1,62 @@
 import os
 import telebot
 from telebot import types
-from flask import Flask
-import threading
+from flask import Flask, request
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID"))
-OWNER_ID = int(os.environ.get("OWNER_ID"))
+# =========================
+# CONFIG
+# =========================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 app = Flask(__name__)
 
-user_data = {}
+# =========================
+# MAIN MENU
+# =========================
+def main_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("📚 Free Study Materials", "🎓 Paid Lecture Packages")
+    markup.row("✉️ Contact Admin", "🔗 Report Broken Link")
+    markup.row("ℹ️ Help")
+    return markup
 
+# =========================
+# BOT COMMANDS
+# =========================
 @bot.message_handler(commands=['start'])
 def start(message):
-    text = """
-👨‍⚕️ <b>Welcome to THE SARCASTIC DOCTOR Official Study Assistant</b>
+    bot.send_message(
+        message.chat.id,
+        "👋 Welcome to <b>THE SARCASTIC DOCTOR</b> Official Study Assistant.\n\nChoose an option below:",
+        reply_markup=main_menu()
+    )
 
-📚 Free Study Materials
-🎓 Paid Lecture Packages
-📩 Anonymous Admin Support
-🔗 Broken Link Reports
+@bot.message_handler(commands=['free_materials'])
+def free_materials(message):
+    bot.send_message(
+        message.chat.id,
+        "📚 <b>FREE STUDY MATERIALS</b>\n\nJoin our free resource hub here:\nhttps://t.me/+4ZjXcxvIqlZkNTY1"
+    )
 
-Choose an option below:
-"""
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📚 Request Free Lecture")
-    markup.row("🎓 Buy Paid Lecture")
-    markup.row("📩 Contact Admin")
-    markup.row("🔗 Report Broken Link")
-    bot.send_message(message.chat.id, text, reply_markup=markup)
+@bot.message_handler(commands=['paid_courses'])
+def paid_courses(message):
+    bot.send_message(
+        message.chat.id,
+        "🎓 <b>PAID LECTURE PACKAGES</b>\n\nContact admin here:\nhttps://t.me/TheSarcasticDoctor"
+    )
 
-@bot.message_handler(func=lambda m: m.text == "📚 Request Free Lecture")
-def ask_free(message):
-    msg = bot.send_message(message.chat.id, "Send lecture name / teacher / subject you need:")
-    bot.register_next_step_handler(msg, save_free_request)
-
-def save_free_request(message):
-    username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-
-    admin_text = f"""
-📥 <b>NEW FREE LECTURE REQUEST</b>
-
-👤 User: {username}
-🆔 ID: <code>{message.chat.id}</code>
-
-📚 Request:
-{message.text}
-"""
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Done Uploaded", callback_data=f"done_{message.chat.id}"))
-
-    bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
-    bot.send_message(message.chat.id, "✅ Your request has been sent to admin. Please wait for approval.")
-
-@bot.message_handler(func=lambda m: m.text == "🎓 Buy Paid Lecture")
-def paid_lecture(message):
-    username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-
-    admin_text = f"""
-💰 <b>PAID LECTURE PURCHASE REQUEST</b>
-
-👤 User: {username}
-🆔 ID: <code>{message.chat.id}</code>
-"""
-    bot.send_message(ADMIN_GROUP_ID, admin_text)
-    bot.send_message(message.chat.id, "✅ Admin has received your paid lecture inquiry. We will contact you shortly.")
-
-@bot.message_handler(func=lambda m: m.text == "📩 Contact Admin")
+@bot.message_handler(commands=['contact_admin'])
 def contact_admin(message):
-    msg = bot.send_message(message.chat.id, "Type your message for admin:")
+    msg = bot.send_message(message.chat.id, "✉️ Send your message for admin:")
     bot.register_next_step_handler(msg, forward_admin_message)
 
 def forward_admin_message(message):
     username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
 
     admin_text = f"""
-📨 <b>NEW MESSAGE TO ADMIN</b>
+✉️ <b>NEW ADMIN MESSAGE</b>
 
 👤 User: {username}
 🆔 ID: <code>{message.chat.id}</code>
@@ -85,12 +64,16 @@ def forward_admin_message(message):
 💬 Message:
 {message.text}
 """
-    bot.send_message(ADMIN_GROUP_ID, admin_text)
-    bot.send_message(message.chat.id, "✅ Message sent to admin.")
 
-@bot.message_handler(func=lambda m: m.text == "🔗 Report Broken Link")
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Done / User Notified", callback_data=f"done_{message.chat.id}"))
+
+    bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
+    bot.send_message(message.chat.id, "✅ Your message has been sent to admin.")
+
+@bot.message_handler(commands=['broken_link'])
 def broken_link(message):
-    msg = bot.send_message(message.chat.id, "Send broken link / screenshot / lecture name:")
+    msg = bot.send_message(message.chat.id, "🔗 Send broken link / screenshot / lecture name:")
     bot.register_next_step_handler(msg, save_broken_report)
 
 def save_broken_report(message):
@@ -105,27 +88,72 @@ def save_broken_report(message):
 🔗 Report:
 {message.text}
 """
+
     bot.send_message(ADMIN_GROUP_ID, admin_text)
     bot.send_message(message.chat.id, "✅ Broken link report sent. Thank you.")
 
+@bot.message_handler(commands=['help'])
+def help_user(message):
+    bot.send_message(
+        message.chat.id,
+        "ℹ️ <b>HOW TO USE THIS BOT</b>\n\nUse menu buttons or commands below:\n/free_materials\n/paid_courses\n/contact_admin\n/broken_link"
+    )
+
+# =========================
+# MENU BUTTON TEXT HANDLERS
+# =========================
+@bot.message_handler(func=lambda m: m.text == "📚 Free Study Materials")
+def btn1(message):
+    free_materials(message)
+
+@bot.message_handler(func=lambda m: m.text == "🎓 Paid Lecture Packages")
+def btn2(message):
+    paid_courses(message)
+
+@bot.message_handler(func=lambda m: m.text == "✉️ Contact Admin")
+def btn3(message):
+    contact_admin(message)
+
+@bot.message_handler(func=lambda m: m.text == "🔗 Report Broken Link")
+def btn4(message):
+    broken_link(message)
+
+@bot.message_handler(func=lambda m: m.text == "ℹ️ Help")
+def btn5(message):
+    help_user(message)
+
+# =========================
+# CALLBACK
+# =========================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("done_"))
 def fulfilled(call):
     uid = int(call.data.split("_")[1])
 
     try:
-        bot.send_message(uid, "🎉 Your requested lecture has been uploaded / arranged by admin. Please check channel/group.")
+        bot.send_message(uid, "🎉 Your requested lecture / issue has been handled by admin. Please check.")
         bot.answer_callback_query(call.id, "Student notified.")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         bot.answer_callback_query(call.id, "Could not notify user.")
 
-@app.route('/')
+# =========================
+# WEBHOOK RECEIVER
+# =========================
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    json_str = request.get_data().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "ok", 200
+
+@app.route("/")
 def home():
-    return "Bot Running"
+    return "TSD BOT WEBHOOK RUNNING"
 
-def run_bot():
-    bot.infinity_polling(timeout=60, long_polling_timeout=60)
-
+# =========================
+# MAIN
+# =========================
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://tsd-request-bot.onrender.com/{BOT_TOKEN}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
