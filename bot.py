@@ -1,68 +1,127 @@
 import os
-import telebot
-from telebot import types
-from flask import Flask
-from threading import Thread
+import requests
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-TOKEN = "8537910008:AAGkzmRcH3o0D-eqaq0LVHW4p202GUIoBGo"
-OWNER_ID = 5471433381
-ADMIN_GROUP_ID = -1003945479408
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 
-pending_users = {}
+# stores admin_message_id -> original_user_id
+MESSAGE_MAP = {}
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    user = message.from_user
-    markup = types.InlineKeyboardMarkup()
-    btn1 = types.InlineKeyboardButton("📚 Request Lecture", callback_data="request")
-    btn2 = types.InlineKeyboardButton("💬 Contact Admin", url="https://t.me/thesarcasticdoctorbot")
-    markup.add(btn1)
-    markup.add(btn2)
+# ---------------- START COMMAND ---------------- #
 
-    txt = f"""
-<b>👨‍⚕️ THE SARCASTIC DOCTOR</b>
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = """
+🔥 Welcome to THE SARCASTIC DOCTOR Support Bot
 
-Welcome {user.first_name}.
+Send us:
+📚 Study Material Requests
+💸 Paid Lecture Complaints
+🔗 Broken Link Reports
+📝 Anonymous Admin Messages
 
-Send your academic lecture requirements directly here.
-
-Our admin panel will receive:
-• your name
-• your user id
-• your username
-• your request
-
-Click below to begin.
+Just type your message and admin will receive it.
 """
-    bot.send_message(message.chat.id, txt, reply_markup=markup)
+    await update.message.reply_text(text)
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-    if call.data == "request":
-        msg = bot.send_message(call.message.chat.id, "📝 Send me the lecture / subject / faculty name you need:")
-        bot.register_next_step_handler(msg, get_request)
+# ---------------- USER PRIVATE MESSAGE HANDLER ---------------- #
 
-def get_request(message):
-    user = message.from_user
-    req = message.text
+async def user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type != "private":
+        return
 
-    pending_users[user.id] = req
-
-    markup = types.InlineKeyboardMarkup()
-    done_btn = types.InlineKeyboardButton("✅ Fulfilled", callback_data=f"done_{user.id}")
-    markup.add(done_btn)
+    user = update.effective_user
+    msg = update.message.text
 
     username = f"@{user.username}" if user.username else "No Username"
 
     admin_text = f"""
-<b>📥 NEW STUDENT REQUEST</b>
+📩 <b>NEW USER REQUEST</b>
 
-👤 Name: {user.first_name}
-🆔 User ID: <code>{user.id}</code>
+👤 Name: {user.full_name}
 🔗 Username: {username}
+🆔 User ID: <code>{user.id}</code>
+
+💬 Message:
+{msg}
+"""
+
+    sent = await context.bot.send_message(
+        chat_id=ADMIN_GROUP_ID,
+        text=admin_text,
+        parse_mode=ParseMode.HTML
+    )
+
+    MESSAGE_MAP[sent.message_id] = user.id
+
+    await update.message.reply_text("✅ Your request has been sent to admin panel.")
+
+# ---------------- ADMIN REPLY SYSTEM ---------------- #
+
+async def admin_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.id != ADMIN_GROUP_ID:
+        return
+
+    if not update.message.reply_to_message:
+        return
+
+    if not update.message.text.startswith(".reply"):
+        return
+
+    replied_message_id = update.message.reply_to_message.message_id
+
+    if replied_message_id not in MESSAGE_MAP:
+        await update.message.reply_text("❌ Cannot detect original user.")
+        return
+
+    target_user_id = MESSAGE_MAP[replied_message_id]
+    reply_text = update.message.text.replace(".reply", "", 1).strip()
+
+    if not reply_text:
+        await update.message.reply_text("❌ Write some reply after .reply")
+        return
+
+    await context.bot.send_message(
+        chat_id=target_user_id,
+        text=f"📬 Admin Reply:\n\n{reply_text}"
+    )
+
+    await update.message.reply_text("✅ Reply sent to user.")
+
+# ---------------- TELEGRAM APPLICATION ---------------- #
+
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, user_message))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_group_reply))
+
+# ---------------- WEBHOOK ROUTE ---------------- #
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    json_data = request.get_json(force=True)
+    update = Update.de_json(json_data, bot)
+    telegram_app.update_queue.put_nowait(update)
+    return "ok"
+
+@app.route('/')
+def home():
+    return "TSD BOT RUNNING"
+
+# ---------------- MAIN ---------------- #
+
+if __name__ == "__main__":
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.create_task(telegram_app.initialize())
+    loop.create_task(telegram_app.start())
+    app.run(host="0.0.0.0", port=10000)🔗 Username: {username}
 
 📚 Requirement:
 <code>{req}</code>
