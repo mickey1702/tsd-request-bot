@@ -23,7 +23,7 @@ def main_menu():
     return markup
 
 # =========================
-# BOT COMMANDS
+# START + COMMANDS
 # =========================
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -37,7 +37,7 @@ def start(message):
 def free_materials(message):
     bot.send_message(
         message.chat.id,
-        "📚 <b>FREE STUDY MATERIALS</b>\n\nJoin our free resource hub here:\nhttps://t.me/+4ZjXcxvIqlZkNTY1"
+        "📚 <b>FREE STUDY MATERIALS</b>\n\nJoin our free resource hub here:\nhttps://t.me/+4ZjXcxvlqIZkNTY1"
     )
 
 @bot.message_handler(commands=['paid_courses'])
@@ -47,6 +47,16 @@ def paid_courses(message):
         "🎓 <b>PAID LECTURE PACKAGES</b>\n\nContact admin here:\nhttps://t.me/TheSarcasticDoctor"
     )
 
+@bot.message_handler(commands=['help'])
+def help_user(message):
+    bot.send_message(
+        message.chat.id,
+        "ℹ️ <b>HOW TO USE THIS BOT</b>\n\nUse menu buttons below for materials, paid packages, support and broken reports."
+    )
+
+# =========================
+# CONTACT ADMIN
+# =========================
 @bot.message_handler(commands=['contact_admin'])
 def contact_admin(message):
     msg = bot.send_message(message.chat.id, "✉️ Send your message for admin:")
@@ -59,7 +69,7 @@ def forward_admin_message(message):
 ✉️ <b>NEW ADMIN MESSAGE</b>
 
 👤 User: {username}
-🆔 ID: <code>{message.chat.id}</code>
+🆔 USERID:{message.chat.id}
 
 💬 Message:
 {message.text}
@@ -71,6 +81,9 @@ def forward_admin_message(message):
     bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
     bot.send_message(message.chat.id, "✅ Your message has been sent to admin.")
 
+# =========================
+# BROKEN LINK REPORT
+# =========================
 @bot.message_handler(commands=['broken_link'])
 def broken_link(message):
     msg = bot.send_message(message.chat.id, "🔗 Send broken link / screenshot / lecture name:")
@@ -83,24 +96,20 @@ def save_broken_report(message):
 🚨 <b>BROKEN LINK REPORT</b>
 
 👤 User: {username}
-🆔 ID: <code>{message.chat.id}</code>
+🆔 USERID:{message.chat.id}
 
 🔗 Report:
 {message.text}
 """
 
-    bot.send_message(ADMIN_GROUP_ID, admin_text)
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Done / User Notified", callback_data=f"done_{message.chat.id}"))
+
+    bot.send_message(ADMIN_GROUP_ID, admin_text, reply_markup=markup)
     bot.send_message(message.chat.id, "✅ Broken link report sent. Thank you.")
 
-@bot.message_handler(commands=['help'])
-def help_user(message):
-    bot.send_message(
-        message.chat.id,
-        "ℹ️ <b>HOW TO USE THIS BOT</b>\n\nUse menu buttons or commands below:\n/free_materials\n/paid_courses\n/contact_admin\n/broken_link"
-    )
-
 # =========================
-# MENU BUTTON TEXT HANDLERS
+# MENU BUTTONS
 # =========================
 @bot.message_handler(func=lambda m: m.text == "📚 Free Study Materials")
 def btn1(message):
@@ -123,7 +132,7 @@ def btn5(message):
     help_user(message)
 
 # =========================
-# CALLBACK
+# DONE BUTTON CALLBACK
 # =========================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("done_"))
 def fulfilled(call):
@@ -135,6 +144,24 @@ def fulfilled(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         bot.answer_callback_query(call.id, "Could not notify user.")
+
+# =========================
+# ADMIN REPLY RELAY SYSTEM
+# =========================
+@bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and message.reply_to_message is not None)
+def admin_reply_relay(message):
+    try:
+        replied_text = message.reply_to_message.text
+
+        if "USERID:" in replied_text:
+            uid = int(replied_text.split("USERID:")[1].split("\n")[0].strip())
+
+            sender = message.from_user.first_name
+
+            bot.send_message(uid, f"📩 <b>ADMIN REPLY</b> ({sender}):\n\n{message.text}")
+            bot.reply_to(message, "✅ Reply sent to user.")
+    except:
+        pass
 
 # =========================
 # WEBHOOK RECEIVER
