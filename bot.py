@@ -9,7 +9,7 @@ from flask import Flask, request
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 
-FREE_GROUP_LINK = "https://t.me/+4ZjXcxvlqIZkNTY1"
+FREE_GROUP_LINK = "https://t.me/+zRsJjUdCCABhMDI1"
 PAID_CONTACT = "https://t.me/TheSarcasticDoctor"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
