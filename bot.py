@@ -98,6 +98,7 @@ def btn4(message):
 def support_inbox(message):
 
     if message.chat.id == ADMIN_GROUP_ID:
+        admin_reply_relay(message)
         return
 
     ignored = [
