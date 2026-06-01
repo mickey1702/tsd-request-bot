@@ -144,8 +144,91 @@ def support_inbox(message):
     except Exception as e:
         print(e)
 
-@bot.message_handler(func=lambda message: message.chat.id == ADMIN_GROUP_ID and message.reply_to_message is not None)
+@bot.message_handler(
+    func=lambda message:
+    message.chat.id == ADMIN_GROUP_ID
+    and
+    message.reply_to_message is not None
+)
 def admin_reply_relay(message):
+
+    try:
+
+        source_text = None
+
+        if hasattr(message.reply_to_message, "text"):
+            source_text = message.reply_to_message.text
+
+        if hasattr(message.reply_to_message, "caption") and message.reply_to_message.caption:
+            source_text = message.reply_to_message.caption
+
+        if not source_text:
+            return
+
+        if "USERID:" not in source_text:
+            return
+
+        uid = int(
+            source_text.split("USERID:")[1]
+            .split("\n")[0]
+            .strip()
+        )
+
+        sender = message.from_user.first_name
+
+        if message.content_type == "text":
+
+            bot.send_message(
+                uid,
+                f"💬 <b>{sender}:</b>\n\n{message.text}"
+            )
+
+        elif message.content_type == "photo":
+
+            bot.send_photo(
+                uid,
+                message.photo[-1].file_id,
+                caption=f"💬 {sender}"
+            )
+
+        elif message.content_type == "document":
+
+            bot.send_document(
+                uid,
+                message.document.file_id,
+                caption=f"💬 {sender}"
+            )
+
+        elif message.content_type == "video":
+
+            bot.send_video(
+                uid,
+                message.video.file_id,
+                caption=f"💬 {sender}"
+            )
+
+        elif message.content_type == "audio":
+
+            bot.send_audio(
+                uid,
+                message.audio.file_id,
+                caption=f"💬 {sender}"
+            )
+
+        elif message.content_type == "voice":
+
+            bot.send_voice(
+                uid,
+                message.voice.file_id
+            )
+
+        bot.reply_to(
+            message,
+            "✅ Reply delivered."
+        )
+
+    except Exception as e:
+        print("REPLY ERROR:", e)
     try:
         source_text = (
             getattr(message.reply_to_message, "caption", None)
